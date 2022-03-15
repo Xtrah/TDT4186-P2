@@ -7,8 +7,8 @@
 #include <arpa/inet.h>
 
 #define PORT 8000
-
 #define MAX 1024
+#define REQUEST_SIZE 65536
 
 int read_html(char *buf, char *path){
     FILE *f = fopen((char*) path, "r");
@@ -26,16 +26,28 @@ int read_html(char *buf, char *path){
         }
     }
 
-    printf("%s", buf);
     fclose(f);
     return 0;
 }
 
-int main (int argc, char const *argv[]) {
-    if (argc < 2) {
+// int setup_socket(char* root, int port) {
+
+// }
+
+void main (int argc, char const *argv[]) {
+    if (argc < 3) {
         printf("Usage: www-path port\n");
-        // exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE);
     }
+
+    // Print all arguments
+    for (int i = 0; i < argc; i++) {
+        printf("Argument %i: %s\n", i, argv[i]);
+    }
+    
+    char webroot[128];
+    strcpy(webroot, argv[1]);
+    int port = atoi(argv[2]);
 
     int server_fd;
     // Struct used when binding the socket to the address and port number specified
@@ -63,7 +75,7 @@ int main (int argc, char const *argv[]) {
     // Any internet address.
     addr.sin6_addr = in6addr_any;
     // Sets port for socket.
-    addr.sin6_port = htons( PORT );
+    addr.sin6_port = htons(port);
     
 
     // Bind the socket to the port (8000)
@@ -93,27 +105,47 @@ int main (int argc, char const *argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        char buffer[1024] = {0};
-        if (read(socket_fd, buffer, 1024) < 0) {
-            printf("Could not read from socket.\n");
-        }
+        char request[REQUEST_SIZE];
+        recv(socket_fd, request, REQUEST_SIZE - 1, 0);
+
+        // Read first line of request.
+        char *first_line = strtok(request, "\r\n");
+        char *get_or_post = strtok(first_line, " ");
+        char *path_to_file = strtok(NULL, " ");
+        char *http_version = strtok(NULL, " ");
+
+        char reply[1024];
+        if (path_to_file == NULL) continue; // Empty requests
         
-        char *reply = 
-                    "HTTP/0.9 200 OK\n"
-                    "Content-Type: text/html\n"
-                    "Connection: close\n"
-                    "\n"
-                    "Hello World!";
-    
+        if (path_to_file != NULL) {
+            char full_path[1024];
+            strcpy(full_path, webroot);
+            strcat(full_path, path_to_file);
+
+            char html_string[MAX];
+            if (read_html(html_string, full_path) < 0) {
+                char error[1024] = "\nHTTP/0.9 404 Not Found\r\n"
+                                 "Content-Type: text/html\n"
+                                 "Connection: close\n"
+                                 "\n";
+                strcpy(reply, error);
+            }
+            else {
+                char success[1024] = "\nHTTP/0.9 200 OK\r\n"
+                                 "Content-Type: text/html\n"
+                                 "Connection: close\n"
+                                 "\n";
+
+                strcat(success, html_string);
+                strcpy(reply, success);
+            }            
+        }
+
         if (send(socket_fd, reply, strlen(reply), 0) < 0) {
             printf("Could not send.\n");
         }
+
         
         close((int) socket_fd);
     }
-
-    char html_string[MAX];
-    if (read_html(html_string, "./doc/index.html") < 0) printf("Nope\n");
-
-    return 0;
 }

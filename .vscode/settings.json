@@ -2,5 +2,7 @@
     "files.associations": {
         "*.html": "html",
         "cstdlib": "c"
-    }
+    },
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 100
 }
