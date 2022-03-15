@@ -10,6 +10,15 @@
 #define MAX 1024
 #define REQUEST_SIZE 65536
 
+/*
+ * Function:  read_html
+ * --------------------
+ *  read string from path and save to buffer
+ *
+ *  buf: buffer to save to
+ *
+ *  path: file to read from
+ */
 int read_html(char *buf, char *path){
     FILE *f = fopen((char*) path, "r");
     if (f == NULL) return -1;
@@ -30,9 +39,52 @@ int read_html(char *buf, char *path){
     return 0;
 }
 
-// int setup_socket(char* root, int port) {
+// Sets up a socket connection.
+int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port) {
+    
 
-// }
+    // Try to create socket (AF_INET6 --> IPV6, SOCK_STREAM --> TCP)
+    if ((*server_fd = socket(AF_INET6, SOCK_STREAM, 0)) == 0)
+    {
+        printf("Could not create socket.\n");
+        return -1;
+    }
+
+    int value = 1;
+
+    // Sets the file descriptor for the socket.
+    if (setsockopt(*server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, 
+        &value, sizeof(value)))
+    {
+        printf("Could not set socket file descriptor.\n");
+        return -1;
+    }
+    
+    // Enables IPv4 and IPv6.
+    addr->sin6_family = AF_INET6;
+    // Any internet address.
+    addr->sin6_addr = in6addr_any;
+    // Sets port for socket.
+    addr->sin6_port = htons(port);
+    
+
+    // Bind the socket to the port (8000)
+    if (bind(*server_fd, (struct sockaddr *)addr, sizeof(*addr)) < 0)
+    {
+        printf("Could not bind socket.\n");
+        return -1;
+    }
+    
+    // Set socket server_fd in passive mode to listen for connections.
+    #define MAX_IN_QUEUE 1
+    if (listen(*server_fd, MAX_IN_QUEUE) < 0)
+    {
+        printf("Could not listen on socket.\n");
+        return -1;
+    }
+
+    return 0;
+}
 
 void main (int argc, char const *argv[]) {
     if (argc < 3) {
@@ -53,43 +105,8 @@ void main (int argc, char const *argv[]) {
     // Struct used when binding the socket to the address and port number specified
     struct sockaddr_in6 addr;
 
-    // Try to create socket (AF_INET6 --> IPV6, SOCK_STREAM --> TCP)
-    if ((server_fd = socket(AF_INET6, SOCK_STREAM, 0)) == 0)
-    {
-        printf("Could not create socket.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    int value = 1;
-
-    // Sets the file descriptor for the socket.
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, 
-        &value, sizeof(value)))
-    {
-        printf("Could not set socket file descriptor.\n");
-        exit(EXIT_FAILURE); 
-    }
-    
-    // Enables IPv4 and IPv6.
-    addr.sin6_family = AF_INET6;
-    // Any internet address.
-    addr.sin6_addr = in6addr_any;
-    // Sets port for socket.
-    addr.sin6_port = htons(port);
-    
-
-    // Bind the socket to the port (8000)
-    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-    {
-        printf("Could not bind socket.\n");
-        exit(EXIT_FAILURE);
-    }
-    
-    // Set socket server_fd in passive mode to listen for connections.
-    #define MAX_IN_QUEUE 1
-    if (listen(server_fd, MAX_IN_QUEUE) < 0)
-    {
-        printf("Could not listen on socket.\n");
+    if (setup_socket(&server_fd, &addr, webroot, port) < 0) {
+        printf("Could not set up socket.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -108,7 +125,7 @@ void main (int argc, char const *argv[]) {
         char request[REQUEST_SIZE];
         recv(socket_fd, request, REQUEST_SIZE - 1, 0);
 
-        // Read first line of request.
+        // Read lines in request header
         char *first_line = strtok(request, "\r\n");
         char *get_or_post = strtok(first_line, " ");
         char *path_to_file = strtok(NULL, " ");
@@ -117,19 +134,22 @@ void main (int argc, char const *argv[]) {
         char reply[1024];
         if (path_to_file == NULL) continue; // Empty requests
         
+        n// If path is NOT NULL, read the file on path
         if (path_to_file != NULL) {
             char full_path[1024];
             strcpy(full_path, webroot);
             strcat(full_path, path_to_file);
 
             char html_string[MAX];
+            // Return 404 if not found
             if (read_html(html_string, full_path) < 0) {
                 char error[1024] = "\nHTTP/0.9 404 Not Found\r\n"
-                                 "Content-Type: text/html\n"
+                                 "Cotent-Type: text/html\n"
                                  "Connection: close\n"
                                  "\n";
                 strcpy(reply, error);
             }
+            // Return 200 OK if read was successfull
             else {
                 char success[1024] = "\nHTTP/0.9 200 OK\r\n"
                                  "Content-Type: text/html\n"
@@ -141,11 +161,11 @@ void main (int argc, char const *argv[]) {
             }            
         }
 
+        // Try to send reply to socket
         if (send(socket_fd, reply, strlen(reply), 0) < 0) {
             printf("Could not send.\n");
         }
 
-        
         close((int) socket_fd);
     }
 }
