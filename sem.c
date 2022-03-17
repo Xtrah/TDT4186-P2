@@ -26,7 +26,7 @@ int sem_del(SEM *sem) {
 
 void P(SEM *sem) {
     assert(pthread_mutex_lock(&sem->lock) == 0);
-    sem->value--; // Decrement
+    sem->value--;
     while (sem->value < 0) {
         pthread_cond_wait(&sem->cond, &sem->lock); //  blocks the calling thread, waiting for the condition specified by cond to be signaled or broadcast to
     }
@@ -36,7 +36,7 @@ void P(SEM *sem) {
 
 void V(SEM *sem) {
     assert(pthread_mutex_lock(&sem->lock) == 0);
-    sem->value++; // Increment
+    sem->value++;
     pthread_cond_signal(&sem->cond);
     assert(pthread_mutex_unlock(&sem->lock) == 0);
 }

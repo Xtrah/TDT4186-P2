@@ -5,13 +5,18 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 #include "sem.h"
+#include "bbuffer.h"
 
-#define PORT 8000
-#define MAX 1024
+#define MAX_FILE_READ_LEN 1024
 #define REQUEST_SIZE 65536
+#define MAX_REQS_IN_QUEUE 10
 
-SEM lock = sem_init(0);
+BNDBUF *req_buffer;
+SEM *req_prod;
+SEM *req_cons;
+char webroot[128];
 
 /*
  * Function:  read_html
@@ -29,7 +34,7 @@ int read_html(char *buf, char *path){
     char line[255];
     
     int flag = 0;
-    while (fgets(line, sizeof(char) * MAX, f)) {
+    while (fgets(line, sizeof(char) * MAX_FILE_READ_LEN, f)) {
         if (flag) strcat(buf, line);
         else {
             // Overwrites garbage first iteration.
@@ -45,7 +50,6 @@ int read_html(char *buf, char *path){
 // Sets up a socket connection.
 int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port) {
     
-
     // Try to create socket (AF_INET6 --> IPV6, SOCK_STREAM --> TCP)
     if ((*server_fd = socket(AF_INET6, SOCK_STREAM, 0)) == 0)
     {
@@ -71,7 +75,7 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
     addr->sin6_port = htons(port);
     
 
-    // Bind the socket to the port (8000)
+    // Bind the socket to the port
     if (bind(*server_fd, (struct sockaddr *)addr, sizeof(*addr)) < 0)
     {
         printf("Could not bind socket.\n");
@@ -79,8 +83,7 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
     }
     
     // Set socket server_fd in passive mode to listen for connections.
-    #define MAX_IN_QUEUE 1
-    if (listen(*server_fd, MAX_IN_QUEUE) < 0)
+    if (listen(*server_fd, MAX_REQS_IN_QUEUE) < 0)
     {
         printf("Could not listen on socket.\n");
         return -1;
@@ -89,7 +92,102 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
     return 0;
 }
 
-void serve_socket(int server_fd, struct sockaddr_in6 addr, char* root) {
+void *process_request() {
+    while (1) {
+        P(req_cons); // Wait for request to be processed.
+        printf("Process\n");
+        int socket_fd = bb_get(req_buffer);
+            
+        char request[REQUEST_SIZE];
+        recv(socket_fd, request, REQUEST_SIZE - 1, 0);
+
+        printf("%s", request);
+
+        // Read lines in request header
+        char *first_line = strtok(request, "\r\n");
+        char *get_or_post = strtok(first_line, " ");
+        char *path_to_file = strtok(NULL, " ");
+        char *http_version = strtok(NULL, " ");
+
+        char reply[1024];
+        
+        // If path is NOT NULL, read the file on path
+        if (path_to_file != NULL) {
+            char full_path[1024];
+            strcpy(full_path, webroot);
+            strcat(full_path, path_to_file);
+
+            char html_string[MAX_FILE_READ_LEN];
+            // Return 404 if not found
+            if (read_html(html_string, full_path) < 0) {
+                char error[1024] = "\nHTTP/0.9 404 Not Found\r\n"
+                                    "Cotent-Type: text/html\r\n"
+                                    "Connection: close\r\n"
+                                    "\r\n";
+                strcpy(reply, error);
+            }
+            // Return 200 OK if read was successfull
+            else {
+                char success[1024] = "\nHTTP/0.9 200 OK\r\n"
+                                    "Content-Type: text/html\r\n"
+                                    "Connection: close\r\n"
+                                    "\r\n";
+
+                strcat(success, html_string);
+                strcpy(reply, success);
+            }  
+
+            // Try to send reply to socket
+            if (send(socket_fd, reply, strlen(reply), 0) < 0) {
+                printf("Could not send.\n");
+            }
+        }
+
+        close((int) socket_fd);
+        V(req_prod); // Signal thread available.
+    }
+}
+
+int main (int argc, char const *argv[]) {
+    if (argc < 5) {
+        printf("Usage: www-path port #threads #bufferslots\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Print all arguments
+    for (int i = 0; i < argc; i++) {
+        printf("Argument %i: %s\n", i, argv[i]);
+    }
+    
+    // Parse arguments.
+    strcpy(webroot, argv[1]);
+    int port = atoi(argv[2]);
+
+    int num_threads = atoi(argv[3]);
+
+    // Init semaphores.
+    req_prod = sem_init(num_threads); // Possible to serve num_threads requests at a time.
+    req_cons = sem_init(0);
+
+    // Initializing thread pool according to specified thread count.
+    pthread_t thread_pool[num_threads];
+
+    for (int i = 0; i < num_threads; ++i) {
+        pthread_create(&thread_pool[i], NULL, process_request, NULL);
+    }
+
+    req_buffer = bb_init(atoi(argv[4]));
+
+    int server_fd;
+    // Struct used when binding the socket to the address and port number specified
+    struct sockaddr_in6 addr;
+
+    if (setup_socket(&server_fd, &addr, webroot, port) < 0) {
+        printf("Could not set up socket.\n");
+        exit(EXIT_FAILURE);
+    }
+
+
     int socket_fd;
     int addr_size = sizeof(addr);
 
@@ -102,80 +200,12 @@ void serve_socket(int server_fd, struct sockaddr_in6 addr, char* root) {
             exit(EXIT_FAILURE);
         }
 
-        char request[REQUEST_SIZE];
-        recv(socket_fd, request, REQUEST_SIZE - 1, 0);
-
-        // Read lines in request header
-        char *first_line = strtok(request, "\r\n");
-        char *get_or_post = strtok(first_line, " ");
-        char *path_to_file = strtok(NULL, " ");
-        char *http_version = strtok(NULL, " ");
-
-        char reply[1024];
-        if (path_to_file == NULL) continue; // Empty requests
-        
-        // If path is NOT NULL, read the file on path
-        if (path_to_file != NULL) {
-            char full_path[1024];
-            strcpy(full_path, root);
-            strcat(full_path, path_to_file);
-
-            char html_string[MAX];
-            // Return 404 if not found
-            if (read_html(html_string, full_path) < 0) {
-                char error[1024] = "\nHTTP/0.9 404 Not Found\r\n"
-                                 "Cotent-Type: text/html\n"
-                                 "Connection: close\n"
-                                 "\n";
-                strcpy(reply, error);
-            }
-            // Return 200 OK if read was successfull
-            else {
-                char success[1024] = "\nHTTP/0.9 200 OK\r\n"
-                                 "Content-Type: text/html\n"
-                                 "Connection: close\n"
-                                 "\n";
-
-                strcat(success, html_string);
-                strcpy(reply, success);
-            }            
-        }
-
-        // Try to send reply to socket
-        if (send(socket_fd, reply, strlen(reply), 0) < 0) {
-            printf("Could not send.\n");
-        }
-
-        close((int) socket_fd);
-    }
-}
-
-int main (int argc, char const *argv[]) {
-
-    if (argc < 3) {
-        printf("Usage: www-path port\n");
-        exit(EXIT_FAILURE);
+        P(req_prod); // Wait for available thread.
+        printf("Add request\n");
+        // Put file descriptor to new requrest into buffer.
+        bb_add(req_buffer, socket_fd);
+        V(req_cons); // Signal available request to be processed.
     }
 
-    // Print all arguments
-    for (int i = 0; i < argc; i++) {
-        printf("Argument %i: %s\n", i, argv[i]);
-    }
-    
-    // Parse arguments.
-    char webroot[128];
-    strcpy(webroot, argv[1]);
-    int port = atoi(argv[2]);
-
-    int server_fd;
-    // Struct used when binding the socket to the address and port number specified
-    struct sockaddr_in6 addr;
-
-    if (setup_socket(&server_fd, &addr, webroot, port) < 0) {
-        printf("Could not set up socket.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    serve_socket(server_fd, addr, webroot);
     return 0;
 }
