@@ -1,7 +1,8 @@
 {
     "files.associations": {
         "*.html": "html",
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "*.h": "c"
     },
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 100

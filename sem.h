@@ -28,7 +28,6 @@ typedef struct SEM SEM;
  *
  * handle for the created semaphore, or NULL if an error occured.
  */
-
 SEM *sem_init(int initVal);
 
 /* Destroys a semaphore and frees all associated resources.
@@ -44,7 +43,6 @@ SEM *sem_init(int initVal);
  * In case of an error, not all resources may have been freed, but 
  * nevertheless the semaphore handle must not be used any more.
  */
-
 int sem_del(SEM *sem);
 
 /* P (wait) operation.
@@ -57,7 +55,6 @@ int sem_del(SEM *sem);
  *
  * sem           handle of the semaphore to decrement
  */
-
 void P(SEM *sem);
 
 /* V (signal) operation.
@@ -69,7 +66,6 @@ void P(SEM *sem);
  *
  * sem           handle of the semaphore to increment
  */
-
 void V(SEM *sem); 
 
 #endif

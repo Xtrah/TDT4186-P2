@@ -5,10 +5,13 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "sem.h"
 
 #define PORT 8000
 #define MAX 1024
 #define REQUEST_SIZE 65536
+
+SEM lock = sem_init(0);
 
 /*
  * Function:  read_html
@@ -86,30 +89,7 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
     return 0;
 }
 
-void main (int argc, char const *argv[]) {
-    if (argc < 3) {
-        printf("Usage: www-path port\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // Print all arguments
-    for (int i = 0; i < argc; i++) {
-        printf("Argument %i: %s\n", i, argv[i]);
-    }
-    
-    char webroot[128];
-    strcpy(webroot, argv[1]);
-    int port = atoi(argv[2]);
-
-    int server_fd;
-    // Struct used when binding the socket to the address and port number specified
-    struct sockaddr_in6 addr;
-
-    if (setup_socket(&server_fd, &addr, webroot, port) < 0) {
-        printf("Could not set up socket.\n");
-        exit(EXIT_FAILURE);
-    }
-
+void serve_socket(int server_fd, struct sockaddr_in6 addr, char* root) {
     int socket_fd;
     int addr_size = sizeof(addr);
 
@@ -134,10 +114,10 @@ void main (int argc, char const *argv[]) {
         char reply[1024];
         if (path_to_file == NULL) continue; // Empty requests
         
-        n// If path is NOT NULL, read the file on path
+        // If path is NOT NULL, read the file on path
         if (path_to_file != NULL) {
             char full_path[1024];
-            strcpy(full_path, webroot);
+            strcpy(full_path, root);
             strcat(full_path, path_to_file);
 
             char html_string[MAX];
@@ -168,4 +148,34 @@ void main (int argc, char const *argv[]) {
 
         close((int) socket_fd);
     }
+}
+
+int main (int argc, char const *argv[]) {
+
+    if (argc < 3) {
+        printf("Usage: www-path port\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Print all arguments
+    for (int i = 0; i < argc; i++) {
+        printf("Argument %i: %s\n", i, argv[i]);
+    }
+    
+    // Parse arguments.
+    char webroot[128];
+    strcpy(webroot, argv[1]);
+    int port = atoi(argv[2]);
+
+    int server_fd;
+    // Struct used when binding the socket to the address and port number specified
+    struct sockaddr_in6 addr;
+
+    if (setup_socket(&server_fd, &addr, webroot, port) < 0) {
+        printf("Could not set up socket.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    serve_socket(server_fd, addr, webroot);
+    return 0;
 }
