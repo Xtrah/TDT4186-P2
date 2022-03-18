@@ -94,9 +94,9 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
 
 void *process_request() {
     while (1) {
-        P(req_cons); // Wait for request to be processed.
-        printf("Process\n");
+        // P(req_cons); // Wait for request to be processed.
         int socket_fd = bb_get(req_buffer);
+        printf("Fd received\n");
             
         char request[REQUEST_SIZE];
         recv(socket_fd, request, REQUEST_SIZE - 1, 0);
@@ -144,7 +144,7 @@ void *process_request() {
         }
 
         close((int) socket_fd);
-        V(req_prod); // Signal thread available.
+        // V(req_prod); // Signal thread available.
     }
 }
 
@@ -152,11 +152,6 @@ int main (int argc, char const *argv[]) {
     if (argc < 5) {
         printf("Usage: www-path port #threads #bufferslots\n");
         exit(EXIT_FAILURE);
-    }
-
-    // Print all arguments
-    for (int i = 0; i < argc; i++) {
-        printf("Argument %i: %s\n", i, argv[i]);
     }
     
     // Parse arguments.
@@ -166,8 +161,9 @@ int main (int argc, char const *argv[]) {
     int num_threads = atoi(argv[3]);
 
     // Init semaphores.
-    req_prod = sem_init(num_threads); // Possible to serve num_threads requests at a time.
-    req_cons = sem_init(0);
+    // req_prod = sem_init(num_threads); // Possible to serve num_threads requests at a time.
+    // req_cons = sem_init(0);
+    req_buffer = bb_init(atoi(argv[4]));
 
     // Initializing thread pool according to specified thread count.
     pthread_t thread_pool[num_threads];
@@ -176,7 +172,6 @@ int main (int argc, char const *argv[]) {
         pthread_create(&thread_pool[i], NULL, process_request, NULL);
     }
 
-    req_buffer = bb_init(atoi(argv[4]));
 
     int server_fd;
     // Struct used when binding the socket to the address and port number specified
@@ -193,18 +188,18 @@ int main (int argc, char const *argv[]) {
 
     while(1) {
         // Waits for a connection on the socket file descriptor.
-        if ((socket_fd = accept(server_fd, (struct sockaddr *)&addr,
-            (socklen_t*)&addr_size)) < 0)
-        {
-            printf("Could not connect to socket.\n");
-            exit(EXIT_FAILURE);
-        }
+        // if ((socket_fd = accept(server_fd, (struct sockaddr *)&addr,
+        //     (socklen_t*)&addr_size)) < 0)
+        // {
+        //     printf("Could not connect to socket.\n");
+        //     exit(EXIT_FAILURE);
+        // }
 
-        P(req_prod); // Wait for available thread.
-        printf("Add request\n");
+        // P(req_prod); // Wait for available thread.
         // Put file descriptor to new requrest into buffer.
-        bb_add(req_buffer, socket_fd);
-        V(req_cons); // Signal available request to be processed.
+        bb_add(req_buffer, accept(server_fd, (struct sockaddr *)&addr, (socklen_t*)&addr_size));
+        printf("Request received\n");
+        // V(req_cons); // Signal available request to be processed.
     }
 
     return 0;
