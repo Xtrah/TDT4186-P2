@@ -23,7 +23,7 @@ BNDBUF *bb_init(unsigned int size) {
     buf->max = size;
     buf->head = 0;
     buf->tail = 0;
-    // buf->count = 0;
+    buf->count = 0;
     pthread_mutex_init(&buf->lock, NULL);
     buf->full = sem_init(size);
     buf->empty = sem_init(0);
@@ -36,14 +36,10 @@ void bb_del(BNDBUF *bb) {
     sem_del(bb->full);
     sem_del(bb->empty);
     free(bb);
-
 }
 
 int bb_get(BNDBUF *bb) {
-    // while (bb->count <= 0) {
-    //     P(bb->empty); // Wait for count to be positive.
-    // }
-    P(bb->empty);
+    P(bb->empty); // Waits for buffer to not be empty.
 
     pthread_mutex_lock(&bb->lock);
     int value = bb->buffer[bb->head]; // Value of head
@@ -56,9 +52,6 @@ int bb_get(BNDBUF *bb) {
 }
 
 void bb_add(BNDBUF *bb, int fd) {
-    // while (bb->count >= bb->max) {
-    //     P(bb->full);
-    // }
     P(bb->full);
 
     pthread_mutex_lock(&bb->lock);

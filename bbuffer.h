@@ -55,7 +55,7 @@ void bb_del(BNDBUF *bb);
  *
  * the int element
  */
-int  bb_get(BNDBUF *bb);
+int bb_get(BNDBUF *bb);
 
 /* Add an element to the bounded buffer. 
  *

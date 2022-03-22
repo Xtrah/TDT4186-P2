@@ -14,8 +14,6 @@
 #define MAX_REQS_IN_QUEUE 10
 
 BNDBUF *req_buffer;
-SEM *req_prod;
-SEM *req_cons;
 char webroot[128];
 
 /*
@@ -37,7 +35,7 @@ int read_html(char *buf, char *path){
     while (fgets(line, sizeof(char) * MAX_FILE_READ_LEN, f)) {
         if (flag) strcat(buf, line);
         else {
-            // Overwrites garbage first iteration.
+            // Overwrites garbage first iteration
             strcpy(buf, line);
             flag = 1;
         }
@@ -47,7 +45,7 @@ int read_html(char *buf, char *path){
     return 0;
 }
 
-// Sets up a socket connection.
+// Sets up a socket connection
 int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port) {
     
     // Try to create socket (AF_INET6 --> IPV6, SOCK_STREAM --> TCP)
@@ -59,7 +57,7 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
 
     int value = 1;
 
-    // Sets the file descriptor for the socket.
+    // Sets the file descriptor for the socket
     if (setsockopt(*server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, 
         &value, sizeof(value)))
     {
@@ -67,11 +65,11 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
         return -1;
     }
     
-    // Enables IPv4 and IPv6.
+    // Enables IPv4 and IPv6
     addr->sin6_family = AF_INET6;
-    // Any internet address.
+    // Any internet address
     addr->sin6_addr = in6addr_any;
-    // Sets port for socket.
+    // Sets port for socket
     addr->sin6_port = htons(port);
     
 
@@ -82,7 +80,7 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
         return -1;
     }
     
-    // Set socket server_fd in passive mode to listen for connections.
+    // Set socket server_fd in passive mode to listen for connections
     if (listen(*server_fd, MAX_REQS_IN_QUEUE) < 0)
     {
         printf("Could not listen on socket.\n");
@@ -92,16 +90,16 @@ int setup_socket(int *server_fd, struct sockaddr_in6 *addr, char* root, int port
     return 0;
 }
 
+// Worker procedure, processing requests existing in the buffer
 void *process_request() {
     while (1) {
-        // P(req_cons); // Wait for request to be processed.
+        // Wait for buffer to be filled with reqests
         int socket_fd = bb_get(req_buffer);
-        printf("Fd received\n");
             
         char request[REQUEST_SIZE];
         recv(socket_fd, request, REQUEST_SIZE - 1, 0);
 
-        printf("%s", request);
+        printf("Request recieved:\n--------------------------\n%s", request);
 
         // Read lines in request header
         char *first_line = strtok(request, "\r\n");
@@ -118,15 +116,16 @@ void *process_request() {
             strcat(full_path, path_to_file);
 
             char html_string[MAX_FILE_READ_LEN];
-            // Return 404 if not found
-            if (read_html(html_string, full_path) < 0) {
+
+            // Return 404 if not found or path traversal attempt
+            if (read_html(html_string, full_path) < 0 || strstr(path_to_file, "../") != NULL) {
                 char error[1024] = "\nHTTP/0.9 404 Not Found\r\n"
                                     "Cotent-Type: text/html\r\n"
                                     "Connection: close\r\n"
                                     "\r\n";
                 strcpy(reply, error);
             }
-            // Return 200 OK if read was successfull
+            // Return 200 OK if read was successful
             else {
                 char success[1024] = "\nHTTP/0.9 200 OK\r\n"
                                     "Content-Type: text/html\r\n"
@@ -144,7 +143,6 @@ void *process_request() {
         }
 
         close((int) socket_fd);
-        // V(req_prod); // Signal thread available.
     }
 }
 
@@ -154,18 +152,16 @@ int main (int argc, char const *argv[]) {
         exit(EXIT_FAILURE);
     }
     
-    // Parse arguments.
+    // Parse arguments
     strcpy(webroot, argv[1]);
     int port = atoi(argv[2]);
 
     int num_threads = atoi(argv[3]);
 
-    // Init semaphores.
-    // req_prod = sem_init(num_threads); // Possible to serve num_threads requests at a time.
-    // req_cons = sem_init(0);
+    // Init semaphores
     req_buffer = bb_init(atoi(argv[4]));
 
-    // Initializing thread pool according to specified thread count.
+    // Initializing thread pool according to specified thread count
     pthread_t thread_pool[num_threads];
 
     for (int i = 0; i < num_threads; ++i) {
@@ -187,20 +183,8 @@ int main (int argc, char const *argv[]) {
     int addr_size = sizeof(addr);
 
     while(1) {
-        // Waits for a connection on the socket file descriptor.
-        // if ((socket_fd = accept(server_fd, (struct sockaddr *)&addr,
-        //     (socklen_t*)&addr_size)) < 0)
-        // {
-        //     printf("Could not connect to socket.\n");
-        //     exit(EXIT_FAILURE);
-        // }
-
-        // P(req_prod); // Wait for available thread.
-        // Put file descriptor to new requrest into buffer.
+        // Put file descriptor to new request into buffer
         bb_add(req_buffer, accept(server_fd, (struct sockaddr *)&addr, (socklen_t*)&addr_size));
-        printf("Request received\n");
-        // V(req_cons); // Signal available request to be processed.
     }
-
     return 0;
 }

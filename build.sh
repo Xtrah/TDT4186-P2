@@ -1,0 +1,1 @@
+gcc -pthread -o mtwww mtwww.c sem.h sem.c bbuffer.h bbuffer.c

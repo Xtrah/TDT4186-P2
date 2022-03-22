@@ -26,17 +26,18 @@ int sem_del(SEM *sem) {
 
 void P(SEM *sem) {
     assert(pthread_mutex_lock(&sem->lock) == 0);
-    sem->value--;
-    while (sem->value < 0) {
-        pthread_cond_wait(&sem->cond, &sem->lock); //  blocks the calling thread, waiting for the condition specified by cond to be signaled or broadcast to
+    while (sem->value <= 0) {
+        // Blocks the thread while the semaphore is 0 or less.
+        pthread_cond_wait(&sem->cond, &sem->lock);
     }
-    pthread_cond_signal(&sem->cond); // unblock at least one of the threads that are blocked on the specified condition variable cond
+    sem->value--;
     assert(pthread_mutex_unlock(&sem->lock) == 0);
 }
 
 void V(SEM *sem) {
     assert(pthread_mutex_lock(&sem->lock) == 0);
     sem->value++;
+    // Signals that the semaphore value has been increased.
     pthread_cond_signal(&sem->cond);
     assert(pthread_mutex_unlock(&sem->lock) == 0);
 }
