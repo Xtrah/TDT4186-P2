@@ -30,6 +30,8 @@ The main thread, on the other hand, continously tries to add incoming HTTP reque
 
 This way the main thread acts as a *producer* accepting new requests and adding them to the buffer if it is not full, while each thread running `process_request` acts as *consumers*, processing requests from the buffer as long as it is not empty.
 
+Finally, to close and free all resources, we call `bb_del` on the bounded buffer as the user terminates the program using SIGTERM.
+
 ## e. Path traversal
 
 To avoid the security problem of path traversal where users can GET files outside of our www-path directory, we sanitize the path in the GET requests `path_to_file`. We check for all `../` in the GET request path, and if there is any, we return a 404 Not Found error.

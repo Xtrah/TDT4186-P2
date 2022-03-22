@@ -27,7 +27,7 @@ int sem_del(SEM *sem) {
 void P(SEM *sem) {
     assert(pthread_mutex_lock(&sem->lock) == 0);
     while (sem->value <= 0) {
-        // Blocks the thread while the semaphore is 0 or less.
+        // Blocks the thread while the semaphore is 0 or less
         pthread_cond_wait(&sem->cond, &sem->lock);
     }
     sem->value--;
@@ -37,7 +37,7 @@ void P(SEM *sem) {
 void V(SEM *sem) {
     assert(pthread_mutex_lock(&sem->lock) == 0);
     sem->value++;
-    // Signals that the semaphore value has been increased.
+    // Signals that the semaphore value has been increased
     pthread_cond_signal(&sem->cond);
     assert(pthread_mutex_unlock(&sem->lock) == 0);
 }

@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,25 +7,27 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+
 #include "sem.h"
 #include "bbuffer.h"
 
-#define MAX_FILE_READ_LEN 1024
+#define MAX_FILE_READ_LEN 4096
 #define REQUEST_SIZE 65536
-#define MAX_REQS_IN_QUEUE 10
+#define MAX_REQS_IN_QUEUE 69
+
+volatile sig_atomic_t finished = 0;
 
 BNDBUF *req_buffer;
 char webroot[128];
 
-/*
- * Function:  read_html
- * --------------------
- *  read string from path and save to buffer
- *
- *  buf: buffer to save to
- *
- *  path: file to read from
- */
+// Terminates the program gracefully when receiving SIGTERM
+void terminate_program(int signum) {
+    bb_del(req_buffer);
+    printf("\nCleared resources successfully!\nBye bye!\n");
+    exit(EXIT_SUCCESS);
+}
+
+// Read string from path and save to buffer
 int read_html(char *buf, char *path){
     FILE *f = fopen((char*) path, "r");
     if (f == NULL) return -1;
@@ -147,6 +150,9 @@ void *process_request() {
 }
 
 int main (int argc, char const *argv[]) {
+    // Set up termination handler
+    signal(SIGINT, terminate_program);
+    
     if (argc < 5) {
         printf("Usage: www-path port #threads #bufferslots\n");
         exit(EXIT_FAILURE);
@@ -186,5 +192,4 @@ int main (int argc, char const *argv[]) {
         // Put file descriptor to new request into buffer
         bb_add(req_buffer, accept(server_fd, (struct sockaddr *)&addr, (socklen_t*)&addr_size));
     }
-    return 0;
 }

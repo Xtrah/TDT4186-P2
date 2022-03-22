@@ -39,11 +39,11 @@ void bb_del(BNDBUF *bb) {
 }
 
 int bb_get(BNDBUF *bb) {
-    P(bb->empty); // Waits for buffer to not be empty.
+    P(bb->empty); // Waits for buffer to not be empty
 
     pthread_mutex_lock(&bb->lock);
     int value = bb->buffer[bb->head]; // Value of head
-    bb->head = (bb->head + 1) % bb->max; // Move buffer head one step further (wrap around max).
+    bb->head = (bb->head + 1) % bb->max; // Move buffer head one step further (wrap around max)
     bb->count--; // Decrement count (because there is one less value in the buffer)
     pthread_mutex_unlock(&bb->lock);
     
@@ -55,10 +55,10 @@ void bb_add(BNDBUF *bb, int fd) {
     P(bb->full);
 
     pthread_mutex_lock(&bb->lock);
-    bb->buffer[bb->tail] = fd; // Insert value fd into buffer tail slot.
-    bb->tail = (bb->tail + 1) % bb->max; // Move buffer tail one step further (wrap around max).
-    bb->count++; // Increment number of elements in buffer.
+    bb->buffer[bb->tail] = fd; // Insert value fd into buffer tail slot
+    bb->tail = (bb->tail + 1) % bb->max; // Move buffer tail one step further (wrap around max)
+    bb->count++; // Increment number of elements in buffer
     pthread_mutex_unlock(&bb->lock);
     
-    V(bb->empty); // Signal that count has been increased.
+    V(bb->empty); // Signal that count has been increased
 }
