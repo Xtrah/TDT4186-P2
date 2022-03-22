@@ -1,1 +1,1 @@
-gcc -pthread -o mtwww mtwww.c sem.h sem.c bbuffer.h bbuffer.c
+gcc -pthread -o mtwww src/mtwww.c src/sem.h src/sem.c src/bbuffer.h src/bbuffer.c
